@@ -47,11 +47,7 @@ Follow the prompts to configure Azure credentials.
 
 **Core Mode (local):**
 ```bash
-# Start backend
-docker compose up -d
-
-# Start frontend
-python3 serve.py
+docker compose up
 
 # Open http://localhost:3000
 ```
