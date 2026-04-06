@@ -1,15 +1,138 @@
-# Quick Start Guide — Voice AI Agent
+# Technical Documentation — Voice AI Agent
 
-## ✅ What's Been Built
+## Architecture Overview
 
-### Backend (server.py)
+A containerized Python backend for a web-based voice AI agent with browser-based audio pipeline connected via WebSocket.
+
+### Components
+
+- **Backend**: FastAPI WebSocket server running in Docker
+- **Speech-to-Text**: Azure Speech SDK with real-time streaming
+- **LLM**: Azure OpenAI for conversation responses
+- **Text-to-Speech**: Azure TTS (captures audio in-memory, no device output)
+- **Audio Pipeline**: Browser → WebSocket → Azure Speech SDK → Azure OpenAI → Azure TTS → Browser
+
+### Features
+
+✅ **Browser-Based UI** — Single-page HTML interface, no build tools required  
+✅ **No Audio Device Dependencies** — All audio I/O through WebSocket  
+✅ **Real-Time STT** — Azure Speech SDK with interim and final transcripts  
+✅ **State Machine** — LISTENING → THINKING → READY → SPEAKING  
+✅ **Conversation Context** — Maintains full conversation history  
+✅ **Two Modes**:
+   - **Interactive**: Wait for browser confirmation before speaking
+   - **Unattended**: Auto-speak all responses
+
+### State Machine Flow
+
+```
+LISTENING
+    ↓ (final transcript received)
+THINKING
+    ↓ (LLM response ready)
+READY (interactive mode) → wait for {"event": "speak_confirm"}
+    ↓ or
+SPEAKING (unattended mode) → auto-speak immediately
+    ↓
+LISTENING (after TTS completes)
+```
+
+## WebSocket API
+
+### Connection
+
+```javascript
+const ws = new WebSocket('ws://localhost:8000/ws');
+```
+
+### Server → Client Messages
+
+#### State Changes (JSON)
+```json
+{"event": "state", "value": "LISTENING"}
+{"event": "state", "value": "THINKING"}
+{"event": "state", "value": "READY"}
+{"event": "state", "value": "SPEAKING"}
+```
+
+#### Transcripts (JSON)
+```json
+{"event": "transcript", "value": "hello world", "type": "interim"}
+{"event": "transcript", "value": "hello world", "type": "final"}
+```
+
+#### LLM Response (JSON)
+```json
+{"event": "llm_response", "value": "That's a great question..."}
+```
+
+#### Audio Response (Binary)
+- WAV file bytes (16-bit, 16kHz, mono)
+- Sent after SPEAKING state begins
+
+### Client → Server Messages
+
+#### Audio Stream (Binary)
+- Send raw PCM audio chunks: 16-bit, 16kHz, mono
+- Server streams to Azure Speech SDK in real-time
+
+#### Speak Confirmation (JSON)
+```json
+{"event": "speak_confirm"}
+```
+When in **interactive mode**, send this after receiving `llm_response` to trigger TTS playback.
+
+## File Structure
+
+```
+azure-sn-agent-web/
+├── index.html             # Browser frontend (single-file)
+├── serve.py               # Simple HTTP server for frontend
+├── server.py              # FastAPI WebSocket backend
+├── requirements.txt       # Python dependencies
+├── Dockerfile             # Container definition
+├── Dockerfile.frontend    # Frontend container (optional)
+├── docker-compose.yml     # Docker Compose configuration
+├── setup-env.sh          # Environment configuration script
+├── .env                  # Environment variables (not in git)
+├── test_websocket.py     # WebSocket test client
+├── terraform/
+│   ├── core/             # Minimal Azure resources
+│   └── full/             # Full deployment with ACR + App Service
+├── README.md             # Quick start guide
+└── QUICKSTART.md         # This file (technical documentation)
+```
+
+---
+
+# Quick Start Guide
+
+## Environment Configuration
+
+Required environment variables (automatically configured via `setup-env.sh`):
+
+```bash
+AZURE_SPEECH_KEY=your-speech-key
+AZURE_SPEECH_REGION=southeastasia
+AZURE_OPENAI_KEY=your-openai-key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_DEPLOYMENT=your-deployment-name
+AZURE_TTS_VOICE=en-US-AndrewNeural
+UNATTENDED=false  # Set to "true" for auto-speak mode
+```
+
+## Testing Locally
+
+### What's Been Built
+
+**Backend (server.py):**
 - ✅ FastAPI WebSocket server
 - ✅ Azure Speech SDK integration (STT + TTS)
 - ✅ Azure OpenAI integration
 - ✅ 4-state machine (LISTENING → THINKING → READY → SPEAKING)
 - ✅ Dockerized and running on port 8000
 
-### Frontend (index.html)
+**Frontend (index.html):**
 - ✅ Single-file HTML with inline JavaScript
 - ✅ WebSocket client connecting to backend
 - ✅ Microphone capture with AudioWorklet
