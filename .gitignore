@@ -1,0 +1,160 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+.cache
+nosetests.xml
+test-results/
+test-output/
+
+# Python Type Checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.code-workspace
+.project
+.pydevproject
+.settings/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Terraform - Core Mode
+terraform/core/.terraform/
+terraform/core/*.tfstate
+terraform/core/*.tfstate.*
+terraform/core/*.tfstate.backup
+terraform/core/.terraform.lock.hcl
+terraform/core/terraform.tfvars
+terraform/core/*.tfplan
+terraform/core/*.tfplan.json
+terraform/core/crash.log
+terraform/core/crash.*.log
+terraform/core/override.tf
+terraform/core/override.tf.json
+terraform/core/*_override.tf
+terraform/core/*_override.tf.json
+
+# Terraform - Full Mode
+terraform/full/.terraform/
+terraform/full/*.tfstate
+terraform/full/*.tfstate.*
+terraform/full/*.tfstate.backup
+terraform/full/.terraform.lock.hcl
+terraform/full/terraform.tfvars
+terraform/full/*.tfplan
+terraform/full/*.tfplan.json
+terraform/full/crash.log
+terraform/full/crash.*.log
+terraform/full/override.tf
+terraform/full/override.tf.json
+terraform/full/*_override.tf
+terraform/full/*_override.tf.json
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Docker
+*.tar
+docker-compose.override.yml
+.dockerignore.bak
+
+# Azure
+.azure/
+azureconfig.json
+*.publishsettings
+
+# Audio/Media files (temporary/generated)
+*.wav
+*.mp3
+*.ogg
+*.flac
+recordings/
+audio_output/
+temp_audio/
+
+# Application specific
+uploads/
+downloads/
+temp/
+tmp/
+cache/
+.cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*.backup
+*~

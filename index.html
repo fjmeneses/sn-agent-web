@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice AI Agent</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Header */
+        header {
+            padding: 20px 30px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .status-badge {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .status-connected {
+            background: #10b981;
+            color: #fff;
+        }
+
+        .status-disconnected {
+            background: #ef4444;
+            color: #fff;
+        }
+
+        /* State Indicator */
+        .state-container {
+            padding: 40px 30px;
+            text-align: center;
+            background: #1a1a1a;
+            border-bottom: 1px solid #333;
+        }
+
+        .state-pill {
+            display: inline-block;
+            padding: 16px 40px;
+            border-radius: 50px;
+            font-size: 18px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s;
+            min-width: 200px;
+        }
+
+        .state-listening {
+            background: #10b981;
+            color: #fff;
+        }
+
+        .state-thinking {
+            background: #f59e0b;
+            color: #fff;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .state-ready {
+            background: #3b82f6;
+            color: #fff;
+        }
+
+        .state-speaking {
+            background: #8b5cf6;
+            color: #fff;
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.05); }
+        }
+
+        .speak-button {
+            margin-top: 20px;
+            padding: 14px 32px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            background: #3b82f6;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .speak-button:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+
+        .speak-button:active {
+            transform: translateY(0);
+        }
+
+        .speak-hint {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #9ca3af;
+        }
+
+        #sessionInfo {
+            margin-top: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: #9ca3af;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        #sessionInfo span {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 300px;
+        }
+
+        #sessionInfo .divider {
+            color: #374151;
+        }
+
+        .warning-box {
+            margin-top: 14px;
+            padding: 14px 16px;
+            background: #451a03;
+            border: 1px solid #92400e;
+            border-radius: 8px;
+            color: #fcd34d;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #e0e0e0;
+        }
+
+        .checkbox-row input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+        }
+
+        /* Conversation Log */
+        .conversation-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 30px;
+            background: #0f0f0f;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .user-label {
+            color: #10b981;
+        }
+
+        .agent-label {
+            color: #8b5cf6;
+        }
+
+        .message-text {
+            font-size: 15px;
+            line-height: 1.6;
+            padding: 12px 16px;
+            border-radius: 8px;
+            background: #1a1a1a;
+        }
+
+        .interim-text {
+            color: #6b7280;
+            font-style: italic;
+        }
+
+        /* Controls */
+        .controls {
+            padding: 20px 30px;
+            background: #1a1a1a;
+            border-top: 1px solid #333;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            background: #374151;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: #4b5563;
+        }
+
+        button.active {
+            background: #10b981;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .error-banner {
+            padding: 16px 30px;
+            background: #dc2626;
+            color: #fff;
+            text-align: center;
+            font-weight: 500;
+            display: none;
+        }
+
+        .error-banner.show {
+            display: block;
+        }
+
+        /* Setup Screen */
+        #setupScreen {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            overflow-y: auto;
+        }
+
+        #setupScreen.hidden {
+            display: none;
+        }
+
+        .setup-title {
+            font-size: 32px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        .setup-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            width: 100%;
+            max-width: 1200px;
+            margin-bottom: 40px;
+        }
+
+        .setup-card {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 30px;
+        }
+
+        .setup-card h2 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 20px;
+        }
+
+        .device-row {
+            margin-bottom: 20px;
+        }
+
+        .device-row label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #9ca3af;
+            margin-bottom: 8px;
+        }
+
+        .device-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .device-controls select {
+            flex: 1;
+            padding: 10px;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            border: 1px solid #333;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .test-button {
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            background: #3b82f6;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .test-button:hover {
+            background: #2563eb;
+        }
+
+        .test-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .browser-note {
+            font-size: 12px;
+            color: #f59e0b;
+            margin-top: 8px;
+            display: none;
+        }
+
+        .browser-note.show {
+            display: block;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 12px;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            border: 1px solid #333;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.5;
+            resize: vertical;
+        }
+
+        .start-session-button {
+            padding: 16px 48px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+            background: #10b981;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .start-session-button:hover:not(:disabled) {
+            background: #059669;
+            transform: translateY(-2px);
+        }
+
+        .start-session-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Main UI */
+        #mainUI {
+            display: none;
+            flex: 1;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #mainUI.active {
+            display: flex;
+        }
+
+        @media (max-width: 768px) {
+            .setup-cards {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Error Banner -->
+    <div id="errorBanner" class="error-banner"></div>
+
+    <!-- Setup Screen -->
+    <div id="setupScreen">
+        <h1 class="setup-title">Voice AI Agent Setup</h1>
+        
+        <div class="setup-cards">
+            <!-- Audio Device Selection -->
+            <div class="setup-card">
+                <h2>Audio Devices</h2>
+                
+                <div class="device-row">
+                    <label>Microphone</label>
+                    <div class="device-controls">
+                        <select id="micSelect">
+                            <option value="">Loading devices...</option>
+                        </select>
+                        <button id="testMicButton" class="test-button" disabled>Test Mic</button>
+                    </div>
+                </div>
+                
+                <div class="device-row">
+                    <label>Speaker</label>
+                    <div class="device-controls">
+                        <select id="speakerSelect">
+                            <option value="">Loading devices...</option>
+                        </select>
+                        <button id="testSpeakerButton" class="test-button" disabled>Test Speaker</button>
+                    </div>
+                    <div id="speakerNote" class="browser-note">Speaker selection not supported in this browser — using system default.</div>
+                </div>
+            </div>
+            
+            <!-- System Prompt Configuration -->
+            <div class="setup-card">
+                <h2>System Prompt</h2>
+                <textarea id="systemPromptInput">You are talking to Darcy a Senior Decision Maker for an Airline Company. You are playing the role of a Solution Engineer for Azure Infra. When she says something, respond naturally as a competent but learning sales rep would. Highlight how Azure would help them and also keep it engaging and ask the right question back. Keep responses concise - 2-3 sentences max. Push the conversation for next steps and thank her for the time. Sound human and conversational, not robotic.</textarea>
+            </div>
+            
+            <!-- Response Mode Configuration -->
+            <div class="setup-card">
+                <h2>Response Mode</h2>
+                
+                <label class="checkbox-row">
+                    <input type="checkbox" id="unattendedCheckbox">
+                    <span>Unattended mode — speak responses automatically</span>
+                </label>
+
+                <div id="unattendedWarning" class="warning-box" style="display:none;">
+                    ⚠️ Unattended mode is enabled. The agent will speak every response automatically without waiting for your confirmation. There will be a delay between the LLM response and speech — do not expect instant replies. Make sure your speaker volume is set correctly before starting.
+                </div>
+            </div>
+        </div>
+        
+        <button id="startSessionButton" class="start-session-button" disabled>Start Session</button>
+    </div>
+
+    <!-- Main UI -->
+    <div id="mainUI">
+        <!-- Header -->
+        <header>
+            <h1>Voice AI Agent</h1>
+            <div id="statusBadge" class="status-badge status-disconnected">Disconnected</div>
+        </header>
+
+        <!-- State Indicator -->
+        <div class="state-container">
+            <div id="statePill" class="state-pill state-listening">CONNECTING</div>
+            <div id="sessionInfo"></div>
+            <div id="speakButtonContainer" style="display: none;">
+                <button id="speakButton" class="speak-button">Speak Response</button>
+                <div class="speak-hint">or press ENTER</div>
+            </div>
+        </div>
+
+        <!-- Conversation Log -->
+        <div id="conversationLog" class="conversation-container">
+            <!-- Messages will be appended here -->
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <button id="muteButton">Mute Microphone</button>
+        </div>
+    <script>
+        // ============================================================================
+        // Global State
+        // ============================================================================
+        let ws = null;
+        let audioContext = null;
+        let mediaStream = null;
+        let workletNode = null;
+        let scriptProcessor = null;
+        let micSource = null;
+        let isMuted = false;
+        let currentState = '';
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+        let reconnectTimeout = null;
+
+        // Setup state
+        let selectedMicDeviceId = null;
+        let selectedSpeakerDeviceId = null;
+        let selectedMicLabel = '';
+        let selectedSpeakerLabel = '';
+        let systemPromptText = '';
+        let micPermissionGranted = false;
+
+        // DOM elements - setup screen
+        const setupScreen = document.getElementById('setupScreen');
+        const mainUI = document.getElementById('mainUI');
+        const micSelect = document.getElementById('micSelect');
+        const speakerSelect = document.getElementById('speakerSelect');
+        const testMicButton = document.getElementById('testMicButton');
+        const testSpeakerButton = document.getElementById('testSpeakerButton');
+        const speakerNote = document.getElementById('speakerNote');
+        const systemPromptInput = document.getElementById('systemPromptInput');
+        const unattendedCheckbox = document.getElementById('unattendedCheckbox');
+        const unattendedWarning = document.getElementById('unattendedWarning');
+        const startSessionButton = document.getElementById('startSessionButton');
+
+        // DOM elements - main UI
+        const statusBadge = document.getElementById('statusBadge');
+        const statePill = document.getElementById('statePill');
+        const speakButtonContainer = document.getElementById('speakButtonContainer');
+        const speakButton = document.getElementById('speakButton');
+        const muteButton = document.getElementById('muteButton');
+        const conversationLog = document.getElementById('conversationLog');
+        const errorBanner = document.getElementById('errorBanner');
+
+        // Current interim transcript
+        let currentInterimElement = null;
+
+        // ============================================================================
+        // Initialization
+        // ============================================================================
+        async function init() {
+            console.log('[Init] Starting setup screen...');
+            
+            // Request microphone permission first
+            try {
+                await requestMicPermission();
+                console.log('[Init] Microphone permission granted');
+                micPermissionGranted = true;
+            } catch (err) {
+                console.error('[Init] Failed to get microphone permission:', err);
+                showError('Microphone access denied. Please allow microphone access and reload.');
+                return;
+            }
+
+            // Enumerate and populate audio devices
+            await populateAudioDevices();
+            
+            // Enable start button
+            startSessionButton.disabled = false;
+
+            // Setup setup screen event listeners
+            setupSetupEventListeners();
+        }
+
+        async function requestMicPermission() {
+            console.log('[Setup] Requesting microphone permission...');
+            const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            tempStream.getTracks().forEach(track => track.stop());
+            console.log('[Setup] Microphone permission obtained');
+        }
+
+        async function populateAudioDevices() {
+            console.log('[Setup] Enumerating devices...');
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            
+            const audioInputs = devices.filter(d => d.kind === 'audioinput');
+            const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+            
+            console.log(`[Setup] Found ${audioInputs.length} microphones, ${audioOutputs.length} speakers`);
+            
+            // Populate microphone dropdown
+            micSelect.innerHTML = '';
+            audioInputs.forEach((device, index) => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.textContent = device.label || `Microphone ${index + 1}`;
+                micSelect.appendChild(option);
+            });
+            
+            if (audioInputs.length > 0) {
+                selectedMicDeviceId = audioInputs[0].deviceId;
+                selectedMicLabel = micSelect.options[0].textContent;
+                testMicButton.disabled = false;
+            }
+            
+            // Populate speaker dropdown
+            speakerSelect.innerHTML = '';
+            audioOutputs.forEach((device, index) => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.textContent = device.label || `Speaker ${index + 1}`;
+                speakerSelect.appendChild(option);
+            });
+            
+            // Check if setSinkId is supported
+            const audio = new Audio();
+            if (typeof audio.setSinkId !== 'function') {
+                speakerNote.classList.add('show');
+                console.log('[Setup] setSinkId not supported');
+            } else if (audioOutputs.length > 0) {
+                selectedSpeakerDeviceId = audioOutputs[0].deviceId;
+                selectedSpeakerLabel = speakerSelect.options[0].textContent;
+                testSpeakerButton.disabled = false;
+            }
+        }
+
+        function setupSetupEventListeners() {
+            micSelect.addEventListener('change', () => {
+                selectedMicDeviceId = micSelect.value;
+                selectedMicLabel = micSelect.options[micSelect.selectedIndex].textContent;
+                console.log('[Setup] Mic changed:', selectedMicDeviceId);
+            });
+            
+            speakerSelect.addEventListener('change', () => {
+                selectedSpeakerDeviceId = speakerSelect.value;
+                selectedSpeakerLabel = speakerSelect.options[speakerSelect.selectedIndex].textContent;
+                console.log('[Setup] Speaker changed:', selectedSpeakerDeviceId);
+            });
+            
+            testMicButton.addEventListener('click', testMicrophone);
+            testSpeakerButton.addEventListener('click', testSpeaker);
+            startSessionButton.addEventListener('click', startSession);
+            
+            unattendedCheckbox.addEventListener('change', (e) => {
+                unattendedWarning.style.display = e.target.checked ? 'block' : 'none';
+            });
+        }
+
+        async function testMicrophone() {
+            console.log('[Setup] Testing microphone...');
+            testMicButton.disabled = true;
+            testMicButton.textContent = 'Recording...';
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: { deviceId: { exact: selectedMicDeviceId } }
+                });
+                
+                const tempAudioContext = new AudioContext({ sampleRate: 16000 });
+                const chunks = [];
+                const source = tempAudioContext.createMediaStreamSource(stream);
+                const processor = tempAudioContext.createScriptProcessor(4096, 1, 1);
+                
+                processor.onaudioprocess = (e) => {
+                    const samples = e.inputBuffer.getChannelData(0);
+                    chunks.push(new Float32Array(samples));
+                };
+                
+                source.connect(processor);
+                processor.connect(tempAudioContext.destination);
+                
+                // Record for 3 seconds
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                
+                // Stop recording
+                stream.getTracks().forEach(track => track.stop());
+                processor.disconnect();
+                source.disconnect();
+                
+                console.log('[Setup] Playing back recording...');
+                testMicButton.textContent = 'Playing...';
+                
+                // Combine chunks
+                const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+                const combined = new Float32Array(totalLength);
+                let offset = 0;
+                chunks.forEach(chunk => {
+                    combined.set(chunk, offset);
+                    offset += chunk.length;
+                });
+                
+                // Play back through selected speaker
+                const audioBuffer = tempAudioContext.createBuffer(1, combined.length, 16000);
+                audioBuffer.copyToChannel(combined, 0);
+                
+                const blob = await audioBufferToWav(audioBuffer);
+                const url = URL.createObjectURL(blob);
+                const audio = new Audio(url);
+                
+                if (selectedSpeakerDeviceId && typeof audio.setSinkId === 'function') {
+                    await audio.setSinkId(selectedSpeakerDeviceId);
+                }
+                
+                await audio.play();
+                audio.onended = () => {
+                    URL.revokeObjectURL(url);
+                    testMicButton.textContent = 'Test Mic';
+                    testMicButton.disabled = false;
+                    tempAudioContext.close();
+                };
+                
+            } catch (err) {
+                console.error('[Setup] Mic test failed:', err);
+                testMicButton.textContent = 'Test Failed';
+                setTimeout(() => {
+                    testMicButton.textContent = 'Test Mic';
+                    testMicButton.disabled = false;
+                }, 2000);
+            }
+        }
+
+        async function testSpeaker() {
+            console.log('[Setup] Testing speaker...');
+            testSpeakerButton.disabled = true;
+            testSpeakerButton.textContent = 'Playing...';
+            
+            try {
+                // Generate 440Hz sine wave (1 second)
+                const tempAudioContext = new AudioContext({ sampleRate: 16000 });
+                const duration = 1;
+                const sampleRate = 16000;
+                const numSamples = duration * sampleRate;
+                const audioBuffer = tempAudioContext.createBuffer(1, numSamples, sampleRate);
+                const channelData = audioBuffer.getChannelData(0);
+                
+                for (let i = 0; i < numSamples; i++) {
+                    channelData[i] = Math.sin(2 * Math.PI * 440 * i / sampleRate) * 0.3;
+                }
+                
+                // Convert to WAV and play
+                const blob = await audioBufferToWav(audioBuffer);
+                const url = URL.createObjectURL(blob);
+                const audio = new Audio(url);
+                
+                if (selectedSpeakerDeviceId && typeof audio.setSinkId === 'function') {
+                    await audio.setSinkId(selectedSpeakerDeviceId);
+                }
+                
+                await audio.play();
+                audio.onended = () => {
+                    URL.revokeObjectURL(url);
+                    testSpeakerButton.textContent = 'Test Speaker';
+                    testSpeakerButton.disabled = false;
+                    tempAudioContext.close();
+                };
+                
+            } catch (err) {
+                console.error('[Setup] Speaker test failed:', err);
+                testSpeakerButton.textContent = 'Test Failed';
+                setTimeout(() => {
+                    testSpeakerButton.textContent = 'Test Speaker';
+                    testSpeakerButton.disabled = false;
+                }, 2000);
+            }
+        }
+
+        function audioBufferToWav(audioBuffer) {
+            return new Promise((resolve) => {
+                const numChannels = audioBuffer.numberOfChannels;
+                const sampleRate = audioBuffer.sampleRate;
+                const format = 1; // PCM
+                const bitDepth = 16;
+                
+                const channelData = audioBuffer.getChannelData(0);
+                const samples = new Int16Array(channelData.length);
+                
+                for (let i = 0; i < channelData.length; i++) {
+                    const s = Math.max(-1, Math.min(1, channelData[i]));
+                    samples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                }
+                
+                const buffer = new ArrayBuffer(44 + samples.length * 2);
+                const view = new DataView(buffer);
+                
+                // WAV header
+                const writeString = (offset, string) => {
+                    for (let i = 0; i < string.length; i++) {
+                        view.setUint8(offset + i, string.charCodeAt(i));
+                    }
+                };
+                
+                writeString(0, 'RIFF');
+                view.setUint32(4, 36 + samples.length * 2, true);
+                writeString(8, 'WAVE');
+                writeString(12, 'fmt ');
+                view.setUint32(16, 16, true);
+                view.setUint16(20, format, true);
+                view.setUint16(22, numChannels, true);
+                view.setUint32(24, sampleRate, true);
+                view.setUint32(28, sampleRate * numChannels * bitDepth / 8, true);
+                view.setUint16(32, numChannels * bitDepth / 8, true);
+                view.setUint16(34, bitDepth, true);
+                writeString(36, 'data');
+                view.setUint32(40, samples.length * 2, true);
+                
+                // Write samples
+                for (let i = 0; i < samples.length; i++) {
+                    view.setInt16(44 + i * 2, samples[i], true);
+                }
+                
+                resolve(new Blob([buffer], { type: 'audio/wav' }));
+            });
+        }
+
+        async function startSession() {
+            console.log('[Setup] Starting session...');
+            startSessionButton.disabled = true;
+            startSessionButton.textContent = 'Starting...';
+            
+            // Get system prompt
+            systemPromptText = systemPromptInput.value.trim();
+            
+            // Hide setup screen, show main UI
+            setupScreen.classList.add('hidden');
+            mainUI.classList.add('active');
+            
+            // Initialize audio with selected devices
+            try {
+                await setupAudio();
+                console.log('[Init] Audio setup complete');
+            } catch (err) {
+                console.error('[Init] Failed to setup audio:', err);
+                showError('Audio setup failed. Please try again.');
+                return;
+            }
+
+            // Connect WebSocket
+            connectWebSocket();
+
+            // Setup main UI event listeners
+            setupEventListeners();
+            
+            // Show session info
+            showSessionInfo();
+        }
+
+        function showSessionInfo() {
+            const micLabel = selectedMicLabel || 'Default Microphone';
+            const speakerLabel = selectedSpeakerLabel || 'Default Speaker';
+            const modeLabel = document.getElementById('unattendedCheckbox').checked
+                ? '🤖 Unattended'
+                : '👤 Interactive';
+            const promptPreview = systemPromptText.length > 80
+                ? systemPromptText.substring(0, 80) + '...'
+                : systemPromptText;
+
+            document.getElementById('sessionInfo').innerHTML = `
+                <span>🎤 ${micLabel}</span>
+                <span class="divider">|</span>
+                <span>🔊 ${speakerLabel}</span>
+                <span class="divider">|</span>
+                <span>${modeLabel}</span>
+                <span class="divider">|</span>
+                <span>🤖 ${promptPreview}</span>
+            `;
+        }
+
+        // ============================================================================
+        // Audio Setup
+        // ============================================================================
+        async function setupAudio() {
+            console.log('[Audio] Initializing audio with selected devices...');
+            
+            // Request microphone with echo cancellation and noise suppression
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    deviceId: selectedMicDeviceId ? { exact: selectedMicDeviceId } : undefined,
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
+            });
+
+            console.log('[Audio] Microphone access granted');
+
+            // Create AudioContext with 16kHz sample rate
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                sampleRate: 16000
+            });
+
+            console.log(`[Audio] AudioContext created with sample rate: ${audioContext.sampleRate}Hz`);
+
+            // Create audio source from microphone
+            micSource = audioContext.createMediaStreamSource(mediaStream);
+
+            // Try to use AudioWorklet (preferred), fall back to ScriptProcessor
+            if (audioContext.audioWorklet) {
+                await setupAudioWorklet();
+            } else {
+                setupScriptProcessor();
+            }
+
+            console.log('[Audio] Audio pipeline established');
+        }
+
+        async function setupAudioWorklet() {
+            console.log('[Audio] Setting up AudioWorklet...');
+
+            // Inline AudioWorklet code
+            const workletCode = `
+                class PCMProcessor extends AudioWorkletProcessor {
+                    process(inputs, outputs, parameters) {
+                        const input = inputs[0];
+                        if (input && input.length > 0) {
+                            const samples = input[0]; // Mono channel
+                            if (samples) {
+                                // Convert Float32 to Int16
+                                const int16Array = new Int16Array(samples.length);
+                                for (let i = 0; i < samples.length; i++) {
+                                    const s = Math.max(-1, Math.min(1, samples[i]));
+                                    int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                                }
+                                this.port.postMessage(int16Array.buffer, [int16Array.buffer]);
+                            }
+                        }
+                        return true;
+                    }
+                }
+                registerProcessor('pcm-processor', PCMProcessor);
+            `;
+
+            const blob = new Blob([workletCode], { type: 'application/javascript' });
+            const workletUrl = URL.createObjectURL(blob);
+            
+            try {
+                await audioContext.audioWorklet.addModule(workletUrl);
+                workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
+                
+                workletNode.port.onmessage = (event) => {
+                    if (!isMuted && ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(event.data);
+                    }
+                };
+
+                micSource.connect(workletNode);
+                
+                console.log('[Audio] AudioWorklet setup complete');
+            } finally {
+                URL.revokeObjectURL(workletUrl);
+            }
+        }
+
+        function setupScriptProcessor() {
+            console.log('[Audio] Falling back to ScriptProcessorNode...');
+            
+            const bufferSize = 4096;
+            scriptProcessor = audioContext.createScriptProcessor(bufferSize, 1, 1);
+            
+            scriptProcessor.onaudioprocess = (event) => {
+                if (!isMuted && ws && ws.readyState === WebSocket.OPEN) {
+                    const samples = event.inputBuffer.getChannelData(0);
+                    
+                    // Convert Float32 to Int16
+                    const int16Array = new Int16Array(samples.length);
+                    for (let i = 0; i < samples.length; i++) {
+                        const s = Math.max(-1, Math.min(1, samples[i]));
+                        int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    }
+                    
+                    ws.send(int16Array.buffer);
+                }
+            };
+
+            micSource.connect(scriptProcessor);
+            scriptProcessor.connect(audioContext.destination);
+            
+            console.log('[Audio] ScriptProcessorNode setup complete');
+        }
+
+        // ============================================================================
+        // WebSocket Connection
+        // ============================================================================
+        function connectWebSocket() {
+            console.log('[WebSocket] Connecting to ws://localhost:8000/ws...');
+            
+            ws = new WebSocket('ws://localhost:8000/ws');
+            ws.binaryType = 'arraybuffer';
+
+            ws.onopen = () => {
+                console.log('[WebSocket] Connected');
+                updateConnectionStatus(true);
+                reconnectAttempts = 0;
+                hideError();
+                
+                // Send system prompt if configured
+                if (systemPromptText) {
+                    console.log('[WebSocket] Sending system prompt...');
+                    ws.send(JSON.stringify({
+                        event: 'set_system_prompt',
+                        value: systemPromptText
+                    }));
+                }
+                
+                // Send unattended mode setting
+                const unattendedMode = document.getElementById('unattendedCheckbox').checked;
+                console.log('[WebSocket] Sending unattended mode:', unattendedMode);
+                ws.send(JSON.stringify({
+                    event: 'set_unattended',
+                    value: unattendedMode
+                }));
+            };
+
+            ws.onmessage = async (event) => {
+                if (typeof event.data === 'string') {
+                    // JSON message
+                    handleJsonMessage(JSON.parse(event.data));
+                } else {
+                    // Binary message (TTS audio)
+                    console.log(`[WebSocket] Received ${event.data.byteLength} bytes of audio`);
+                    await playAudio(event.data);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('[WebSocket] Error:', error);
+            };
+
+            ws.onclose = () => {
+                console.log('[WebSocket] Connection closed');
+                updateConnectionStatus(false);
+                attemptReconnect();
+            };
+        }
+
+        function handleJsonMessage(message) {
+            console.log('[WebSocket] Received:', message);
+
+            switch (message.event) {
+                case 'state':
+                    updateState(message.value);
+                    break;
+
+                case 'transcript':
+                    handleTranscript(message.value, message.type);
+                    break;
+
+                case 'llm_response':
+                    handleLLMResponse(message.value);
+                    break;
+
+                case 'error':
+                    if (message.value === 'session_active') {
+                        showError('Another session is already active. Please wait and try again.');
+                        // Don't attempt reconnect for session_active errors
+                        reconnectAttempts = maxReconnectAttempts;
+                    }
+                    break;
+
+                default:
+                    console.warn('[WebSocket] Unknown event:', message.event);
+            }
+        }
+
+        function attemptReconnect() {
+            if (reconnectAttempts >= maxReconnectAttempts) {
+                console.log('[WebSocket] Max reconnection attempts reached');
+                showError('Connection lost. Please refresh the page to reconnect.');
+                return;
+            }
+
+            reconnectAttempts++;
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 10000);
+            
+            console.log(`[WebSocket] Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})...`);
+            
+            reconnectTimeout = setTimeout(() => {
+                connectWebSocket();
+            }, delay);
+        }
+
+        // ============================================================================
+        // Audio Playback
+        // ============================================================================
+        async function playAudio(arrayBuffer) {
+            try {
+                console.log('[Audio] Playing TTS audio through selected speaker...');
+                const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
+                const url = URL.createObjectURL(blob);
+                const audio = new Audio(url);
+                
+                // Set audio output device if supported
+                if (selectedSpeakerDeviceId && typeof audio.setSinkId === 'function') {
+                    await audio.setSinkId(selectedSpeakerDeviceId);
+                    console.log('[Audio] Audio routed to selected speaker');
+                }
+                
+                await audio.play();
+                
+                audio.onended = () => {
+                    URL.revokeObjectURL(url);
+                    console.log('[Audio] TTS playback complete');
+                };
+                
+            } catch (err) {
+                console.error('[Audio] Failed to play audio:', err);
+            }
+        }
+
+        // ============================================================================
+        // UI Updates
+        // ============================================================================
+        function updateConnectionStatus(connected) {
+            if (connected) {
+                statusBadge.textContent = 'Connected';
+                statusBadge.className = 'status-badge status-connected';
+            } else {
+                statusBadge.textContent = 'Disconnected';
+                statusBadge.className = 'status-badge status-disconnected';
+            }
+        }
+
+        function updateState(state) {
+            console.log(`[State] ${currentState} → ${state}`);
+            currentState = state;
+
+            // Update pill appearance
+            statePill.textContent = state;
+            statePill.className = 'state-pill state-' + state.toLowerCase();
+
+            // Show/hide speak button
+            if (state === 'READY') {
+                speakButtonContainer.style.display = 'block';
+            } else {
+                speakButtonContainer.style.display = 'none';
+            }
+        }
+
+        function handleTranscript(text, type) {
+            if (type === 'interim') {
+                // Update or create interim message
+                if (currentInterimElement) {
+                    currentInterimElement.textContent = text;
+                } else {
+                    currentInterimElement = document.createElement('div');
+                    currentInterimElement.className = 'message-text interim-text';
+                    currentInterimElement.textContent = text;
+                    
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'message';
+                    
+                    const label = document.createElement('div');
+                    label.className = 'message-label user-label';
+                    label.textContent = 'You';
+                    
+                    messageDiv.appendChild(label);
+                    messageDiv.appendChild(currentInterimElement);
+                    conversationLog.appendChild(messageDiv);
+                }
+            } else if (type === 'final') {
+                // Replace interim with final, or create new final message
+                if (currentInterimElement) {
+                    currentInterimElement.className = 'message-text';
+                    currentInterimElement.textContent = text;
+                    currentInterimElement = null;
+                } else {
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'message';
+                    
+                    const label = document.createElement('div');
+                    label.className = 'message-label user-label';
+                    label.textContent = 'You';
+                    
+                    const textDiv = document.createElement('div');
+                    textDiv.className = 'message-text';
+                    textDiv.textContent = text;
+                    
+                    messageDiv.appendChild(label);
+                    messageDiv.appendChild(textDiv);
+                    conversationLog.appendChild(messageDiv);
+                }
+                
+                scrollToBottom();
+            }
+        }
+
+        function handleLLMResponse(text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            
+            const label = document.createElement('div');
+            label.className = 'message-label agent-label';
+            label.textContent = 'Agent';
+            
+            const textDiv = document.createElement('div');
+            textDiv.className = 'message-text';
+            textDiv.textContent = text;
+            
+            messageDiv.appendChild(label);
+            messageDiv.appendChild(textDiv);
+            conversationLog.appendChild(messageDiv);
+            
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            conversationLog.scrollTop = conversationLog.scrollHeight;
+        }
+
+        function showError(message) {
+            errorBanner.textContent = message;
+            errorBanner.classList.add('show');
+        }
+
+        function hideError() {
+            errorBanner.classList.remove('show');
+        }
+
+        // ============================================================================
+        // Event Listeners
+        // ============================================================================
+        function setupEventListeners() {
+            // Speak button
+            speakButton.addEventListener('click', () => {
+                console.log('[UI] Speak button clicked');
+                sendSpeakConfirm();
+            });
+
+            // ENTER key for speak confirm (only when READY)
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' && currentState === 'READY') {
+                    console.log('[UI] ENTER key pressed in READY state');
+                    event.preventDefault();
+                    sendSpeakConfirm();
+                }
+            });
+
+            // Mute button
+            muteButton.addEventListener('click', () => {
+                isMuted = !isMuted;
+                muteButton.textContent = isMuted ? 'Unmute Microphone' : 'Mute Microphone';
+                muteButton.className = isMuted ? 'active' : '';
+                console.log(`[Audio] Microphone ${isMuted ? 'muted' : 'unmuted'}`);
+            });
+        }
+
+        function sendSpeakConfirm() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ event: 'speak_confirm' }));
+                console.log('[WebSocket] Sent speak_confirm');
+            }
+        }
+
+        // ============================================================================
+        // Start Application
+        // ============================================================================
+        window.addEventListener('DOMContentLoaded', () => {
+            init();
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (ws) {
+                ws.close();
+            }
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+            }
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+            }
+        });
+    </script>
+</body>
+</html>
