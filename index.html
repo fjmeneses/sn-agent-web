@@ -397,6 +397,72 @@
             resize: vertical;
         }
 
+        .label-hint {
+            font-size: 12px;
+            font-weight: 400;
+            color: #6b7280;
+        }
+
+        .field-hint {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .prompt-fields {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+
+        .prompt-fields label {
+            display: flex;
+            flex-direction: column;
+            font-size: 13px;
+            font-weight: 500;
+            color: #d1d5db;
+            gap: 4px;
+        }
+
+        .prompt-fields input {
+            padding: 10px 12px;
+            background: #111827;
+            border: 1px solid #374151;
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 13px;
+        }
+
+        .prompt-fields input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        .prompt-preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .prompt-preview-header button {
+            font-size: 12px;
+            padding: 4px 10px;
+            background: #1f2937;
+            color: #9ca3af;
+            border: 1px solid #374151;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .prompt-preview-header button:hover {
+            background: #374151;
+        }
+
         .start-session-button {
             padding: 16px 48px;
             font-size: 18px;
@@ -433,6 +499,10 @@
 
         @media (max-width: 768px) {
             .setup-cards {
+                grid-template-columns: 1fr;
+            }
+
+            .prompt-fields {
                 grid-template-columns: 1fr;
             }
         }
@@ -475,8 +545,38 @@
             
             <!-- System Prompt Configuration -->
             <div class="setup-card">
-                <h2>System Prompt</h2>
-                <textarea id="systemPromptInput">You are talking to Darcy a Senior Decision Maker for an Airline Company. You are playing the role of a Solution Engineer for Azure Infra. When she says something, respond naturally as a competent but learning sales rep would. Highlight how Azure would help them and also keep it engaging and ask the right question back. Keep responses concise - 2-3 sentences max. Push the conversation for next steps and thank her for the time. Sound human and conversational, not robotic.</textarea>
+                <h2>System Prompt <span class="label-hint">— tell Cyrano who it is and who it's talking to</span></h2>
+                <p class="field-hint">
+                    Fill in the four fields below to define the session context. Cyrano uses this to respond appropriately throughout the conversation.
+                </p>
+                
+                <div class="prompt-fields">
+                    <label>Who is the agent playing?
+                        <span class="field-hint">e.g. Solution Engineer at Microsoft, Account Executive at Salesforce</span>
+                        <input type="text" id="agentRole" placeholder="Solution Engineer for Azure Infrastructure">
+                    </label>
+
+                    <label>Who are they talking to?
+                        <span class="field-hint">e.g. Darcy, Senior Decision Maker at an Airline Company</span>
+                        <input type="text" id="contactInfo" placeholder="Darcy, Senior Decision Maker at an Airline Company">
+                    </label>
+
+                    <label>What is the goal of this conversation?
+                        <span class="field-hint">e.g. Qualify interest in Azure migration, push for a follow-up meeting</span>
+                        <input type="text" id="sessionGoal" placeholder="Qualify interest and push for next steps">
+                    </label>
+
+                    <label>Tone and style
+                        <span class="field-hint">e.g. Concise, consultative, human — not robotic. 2-3 sentences max.</span>
+                        <input type="text" id="toneStyle" placeholder="Concise, natural, engaging. 2-3 sentences max.">
+                    </label>
+                </div>
+
+                <div class="prompt-preview-header">
+                    <span>Composed system prompt</span>
+                    <button type="button" id="editPromptToggle">Edit manually</button>
+                </div>
+                <textarea id="systemPromptTextarea" readonly rows="5"></textarea>
             </div>
             
             <!-- Response Mode Configuration -->
@@ -556,7 +656,13 @@
         const testMicButton = document.getElementById('testMicButton');
         const testSpeakerButton = document.getElementById('testSpeakerButton');
         const speakerNote = document.getElementById('speakerNote');
-        const systemPromptInput = document.getElementById('systemPromptInput');
+        const systemPromptTextarea = document.getElementById('systemPromptTextarea');
+        const agentRoleInput = document.getElementById('agentRole');
+        const contactInfoInput = document.getElementById('contactInfo');
+        const sessionGoalInput = document.getElementById('sessionGoal');
+        const toneStyleInput = document.getElementById('toneStyle');
+        const editPromptToggle = document.getElementById('editPromptToggle');
+        const promptFields = document.querySelector('.prompt-fields');
         const unattendedCheckbox = document.getElementById('unattendedCheckbox');
         const unattendedWarning = document.getElementById('unattendedWarning');
         const startSessionButton = document.getElementById('startSessionButton');
@@ -572,6 +678,63 @@
 
         // Current interim transcript
         let currentInterimElement = null;
+
+        // ============================================================================
+        // System Prompt Composer
+        // ============================================================================
+        let manualEditMode = false;
+
+        function composeSystemPrompt() {
+            const role = agentRoleInput.value.trim()
+                || 'Solution Engineer for Azure Infrastructure';
+            const contact = contactInfoInput.value.trim()
+                || 'a Senior Decision Maker';
+            const goal = sessionGoalInput.value.trim()
+                || 'qualify interest and push for next steps';
+            const tone = toneStyleInput.value.trim()
+                || 'Concise, natural, and engaging. 2-3 sentences max.';
+
+            return `You are a ${role}. You are speaking with ${contact}. ` +
+                `Respond naturally and competently. Your goal is to ${goal}. ` +
+                `Highlight relevant value and ask the right follow-up question. ` +
+                `Tone: ${tone}. Sound human and conversational, not robotic.`;
+        }
+
+        function initSystemPromptBuilder() {
+            // Pre-fill with defaults
+            agentRoleInput.value = 'Solution Engineer for Azure Infrastructure';
+            contactInfoInput.value = 'Darcy, a Senior Decision Maker at an Airline Company';
+            sessionGoalInput.value = 'qualify interest in Azure, highlight value, and push for a follow-up meeting';
+            toneStyleInput.value = 'Concise and engaging. 2-3 sentences max. Thank her for her time.';
+            
+            // Initial compose
+            systemPromptTextarea.value = composeSystemPrompt();
+
+            // Auto-compose on field changes
+            [agentRoleInput, contactInfoInput, sessionGoalInput, toneStyleInput].forEach(input => {
+                input.addEventListener('input', () => {
+                    if (!manualEditMode) {
+                        systemPromptTextarea.value = composeSystemPrompt();
+                    }
+                });
+            });
+
+            // Manual edit toggle
+            editPromptToggle.addEventListener('click', () => {
+                manualEditMode = !manualEditMode;
+
+                if (manualEditMode) {
+                    promptFields.style.display = 'none';
+                    systemPromptTextarea.removeAttribute('readonly');
+                    editPromptToggle.textContent = 'Use guided fields';
+                } else {
+                    promptFields.style.display = 'grid';
+                    systemPromptTextarea.setAttribute('readonly', true);
+                    systemPromptTextarea.value = composeSystemPrompt();
+                    editPromptToggle.textContent = 'Edit manually';
+                }
+            });
+        }
 
         // ============================================================================
         // Initialization
@@ -592,6 +755,9 @@
 
             // Enumerate and populate audio devices
             await populateAudioDevices();
+            
+            // Initialize system prompt builder
+            initSystemPromptBuilder();
             
             // Enable start button
             startSessionButton.disabled = false;
@@ -846,7 +1012,7 @@
             startSessionButton.textContent = 'Starting...';
             
             // Get system prompt
-            systemPromptText = systemPromptInput.value.trim();
+            systemPromptText = systemPromptTextarea.value.trim();
             
             // Hide setup screen, show main UI
             setupScreen.classList.add('hidden');
