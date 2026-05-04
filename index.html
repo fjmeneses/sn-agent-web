@@ -102,34 +102,6 @@
             50% { opacity: 0.8; transform: scale(1.05); }
         }
 
-        .speak-button {
-            margin-top: 20px;
-            padding: 14px 32px;
-            font-size: 16px;
-            font-weight: 600;
-            color: #fff;
-            background: #3b82f6;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .speak-button:hover {
-            background: #2563eb;
-            transform: translateY(-1px);
-        }
-
-        .speak-button:active {
-            transform: translateY(0);
-        }
-
-        .speak-hint {
-            margin-top: 10px;
-            font-size: 13px;
-            color: #9ca3af;
-        }
-
         #sessionInfo {
             margin-top: 16px;
             display: flex;
@@ -599,19 +571,6 @@
                 <textarea id="systemPromptTextarea" readonly rows="5"></textarea>
             </div>
             
-            <!-- Response Mode Configuration -->
-            <div class="setup-card">
-                <h2>Response Mode</h2>
-                
-                <label class="checkbox-row">
-                    <input type="checkbox" id="unattendedCheckbox">
-                    <span>Unattended mode — speak responses automatically</span>
-                </label>
-
-                <div id="unattendedWarning" class="warning-box" style="display:none;">
-                    ⚠️ Unattended mode is enabled. The agent will speak every response automatically without waiting for your confirmation. There will be a delay between the LLM response and speech — do not expect instant replies. Make sure your speaker volume is set correctly before starting.
-                </div>
-            </div>
         </div>
         
         <button id="startSessionButton" class="start-session-button" disabled>Start Session</button>
@@ -629,10 +588,6 @@
         <div class="state-container">
             <div id="statePill" class="state-pill state-listening">CONNECTING</div>
             <div id="sessionInfo"></div>
-            <div id="speakButtonContainer" style="display: none;">
-                <button id="speakButton" class="speak-button">Speak Response</button>
-                <div class="speak-hint">or press ENTER</div>
-            </div>
         </div>
 
         <!-- Conversation Log -->
@@ -660,6 +615,8 @@
         const maxReconnectAttempts = 5;
         let reconnectTimeout = null;
         let playbackQueue = Promise.resolve();
+        let queuedPlaybackCount = 0;
+        let isTtsPlaybackActive = false;
 
         // Setup state
         let selectedMicDeviceId = null;
@@ -684,15 +641,11 @@
         const toneStyleInput = document.getElementById('toneStyle');
         const editPromptToggle = document.getElementById('editPromptToggle');
         const promptFields = document.querySelector('.prompt-fields');
-        const unattendedCheckbox = document.getElementById('unattendedCheckbox');
-        const unattendedWarning = document.getElementById('unattendedWarning');
         const startSessionButton = document.getElementById('startSessionButton');
 
         // DOM elements - main UI
         const statusBadge = document.getElementById('statusBadge');
         const statePill = document.getElementById('statePill');
-        const speakButtonContainer = document.getElementById('speakButtonContainer');
-        const speakButton = document.getElementById('speakButton');
         const muteButton = document.getElementById('muteButton');
         const conversationLog = document.getElementById('conversationLog');
         const errorBanner = document.getElementById('errorBanner');
@@ -868,10 +821,6 @@
             testMicButton.addEventListener('click', testMicrophone);
             testSpeakerButton.addEventListener('click', testSpeaker);
             startSessionButton.addEventListener('click', startSession);
-            
-            unattendedCheckbox.addEventListener('change', (e) => {
-                unattendedWarning.style.display = e.target.checked ? 'block' : 'none';
-            });
         }
 
         async function testMicrophone() {
@@ -1075,9 +1024,7 @@
         function showSessionInfo() {
             const micLabel = selectedMicLabel || 'Default Microphone';
             const speakerLabel = selectedSpeakerLabel || 'Default Speaker';
-            const modeLabel = document.getElementById('unattendedCheckbox').checked
-                ? '🤖 Unattended'
-                : '👤 Interactive';
+            const modeLabel = 'Auto speech';
             const promptPreview = systemPromptText.length > 80
                 ? systemPromptText.substring(0, 80) + '...'
                 : systemPromptText;
@@ -1165,7 +1112,7 @@
                 workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
                 
                 workletNode.port.onmessage = (event) => {
-                    if (!isMuted && ws && ws.readyState === WebSocket.OPEN) {
+                    if (shouldSendMicrophoneAudio()) {
                         ws.send(event.data);
                     }
                 };
@@ -1185,7 +1132,7 @@
             scriptProcessor = audioContext.createScriptProcessor(bufferSize, 1, 1);
             
             scriptProcessor.onaudioprocess = (event) => {
-                if (!isMuted && ws && ws.readyState === WebSocket.OPEN) {
+                if (shouldSendMicrophoneAudio()) {
                     const samples = event.inputBuffer.getChannelData(0);
                     
                     // Convert Float32 to Int16
@@ -1242,12 +1189,11 @@
                     }));
                 }
                 
-                // Send unattended mode setting
-                const unattendedMode = document.getElementById('unattendedCheckbox').checked;
-                console.log('[WebSocket] Sending unattended mode:', unattendedMode);
+                // Browser sessions auto-speak responses; there is no manual Speak button.
+                console.log('[WebSocket] Sending unattended mode: true');
                 ws.send(JSON.stringify({
                     event: 'set_unattended',
-                    value: unattendedMode
+                    value: true
                 }));
             };
 
@@ -1322,9 +1268,45 @@
         // ============================================================================
         // Audio Playback
         // ============================================================================
+        function shouldSendMicrophoneAudio() {
+            return !isMuted && !isTtsPlaybackActive && ws && ws.readyState === WebSocket.OPEN;
+        }
+
+        function setTtsPlaybackActive(active) {
+            if (isTtsPlaybackActive === active) {
+                return;
+            }
+
+            isTtsPlaybackActive = active;
+            updateMuteButton();
+            console.log(`[Audio] Listening ${active ? 'paused for TTS playback' : 'resumed after TTS playback'}`);
+        }
+
+        function updateMuteButton() {
+            if (isMuted) {
+                muteButton.textContent = 'Unmute Microphone';
+                muteButton.className = 'active';
+            } else if (isTtsPlaybackActive) {
+                muteButton.textContent = 'Listening Paused';
+                muteButton.className = 'active';
+            } else {
+                muteButton.textContent = 'Mute Microphone';
+                muteButton.className = '';
+            }
+        }
+
         function queueAudioPlayback(arrayBuffer) {
+            queuedPlaybackCount++;
+            setTtsPlaybackActive(true);
+
             playbackQueue = playbackQueue
                 .then(() => playAudio(arrayBuffer))
+                .finally(() => {
+                    queuedPlaybackCount = Math.max(0, queuedPlaybackCount - 1);
+                    if (queuedPlaybackCount === 0) {
+                        setTtsPlaybackActive(false);
+                    }
+                })
                 .catch((err) => {
                     console.error('[Audio] Playback queue error:', err);
                 });
@@ -1383,12 +1365,6 @@
             statePill.textContent = state;
             statePill.className = 'state-pill state-' + state.toLowerCase();
 
-            // Show/hide speak button
-            if (state === 'READY') {
-                speakButtonContainer.style.display = 'block';
-            } else {
-                speakButtonContainer.style.display = 'none';
-            }
         }
 
         function handleTranscript(text, type) {
@@ -1475,35 +1451,12 @@
         // Event Listeners
         // ============================================================================
         function setupEventListeners() {
-            // Speak button
-            speakButton.addEventListener('click', () => {
-                console.log('[UI] Speak button clicked');
-                sendSpeakConfirm();
-            });
-
-            // ENTER key for speak confirm (only when READY)
-            document.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter' && currentState === 'READY') {
-                    console.log('[UI] ENTER key pressed in READY state');
-                    event.preventDefault();
-                    sendSpeakConfirm();
-                }
-            });
-
             // Mute button
             muteButton.addEventListener('click', () => {
                 isMuted = !isMuted;
-                muteButton.textContent = isMuted ? 'Unmute Microphone' : 'Mute Microphone';
-                muteButton.className = isMuted ? 'active' : '';
+                updateMuteButton();
                 console.log(`[Audio] Microphone ${isMuted ? 'muted' : 'unmuted'}`);
             });
-        }
-
-        function sendSpeakConfirm() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ event: 'speak_confirm' }));
-                console.log('[WebSocket] Sent speak_confirm');
-            }
         }
 
         // ============================================================================
