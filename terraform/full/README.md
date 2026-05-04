@@ -37,18 +37,16 @@ This will provision all Azure resources including the App Service configured to 
 
 ### 3. Build and Push Docker Image
 
-After Terraform completes, get your ACR details:
+After Terraform completes, get your ACR login server:
 
 ```bash
 ACR_SERVER=$(terraform output -raw acr_login_server)
-ACR_USERNAME=$(terraform output -raw acr_admin_username)
-ACR_PASSWORD=$(terraform output -raw acr_admin_password)
 ```
 
-Login to ACR:
+Login to ACR with your Azure identity:
 
 ```bash
-echo $ACR_PASSWORD | docker login $ACR_SERVER -u $ACR_USERNAME --password-stdin
+az acr login --name ${ACR_SERVER%%.azurecr.io}
 ```
 
 Build and push your Docker image from the project root:
@@ -82,16 +80,17 @@ terraform output app_service_url
 
 All environment variables are automatically configured as App Service App Settings:
 
-- `AZURE_SPEECH_KEY` - From Speech Services
-- `AZURE_SPEECH_REGION` - Deployment region
-- `AZURE_OPENAI_KEY` - From OpenAI resource
-- `AZURE_OPENAI_ENDPOINT` - OpenAI endpoint URL
+- `AZURE_AI_SERVICES_RESOURCE_ID` - Existing Azure AI Services resource ID
+- `AZURE_SPEECH_ENDPOINT` - Existing Azure AI Services endpoint for Speech
+- `AZURE_SPEECH_REGION` - Azure AI Services region
+- `AZURE_OPENAI_ENDPOINT` - Azure AI Services endpoint URL
 - `AZURE_OPENAI_DEPLOYMENT` - Model deployment name
+- `AZURE_OPENAI_API_VERSION` - Azure OpenAI API version
 - `AZURE_TTS_VOICE` - TTS voice configuration
 - `UNATTENDED` - Agent mode flag
 - `WEBSITES_PORT` - Container port (8000)
 
-**No .env file is needed** — all configuration is managed through Terraform.
+**No .env file is needed** — all configuration is managed through Terraform. The App Service uses a system-assigned managed identity to call Azure AI Services and pull images from ACR.
 
 ## Monitoring
 
@@ -118,5 +117,5 @@ terraform destroy
 - Check firewall/network rules if accessing from corporate network
 
 **ACR authentication failures?**
-- Admin access is enabled by default
-- Credentials are automatically configured in App Settings
+- Admin access is disabled by default
+- App Service pulls images with managed identity and the `AcrPull` role

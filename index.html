@@ -302,10 +302,10 @@
 
         .setup-cards {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            grid-template-columns: minmax(560px, 1.15fr) minmax(420px, 1fr);
             gap: 30px;
             width: 100%;
-            max-width: 1200px;
+            max-width: 1440px;
             margin-bottom: 40px;
         }
 
@@ -314,6 +314,10 @@
             border: 1px solid #333;
             border-radius: 12px;
             padding: 30px;
+        }
+
+        .audio-card {
+            min-width: 560px;
         }
 
         .setup-card h2 {
@@ -338,16 +342,24 @@
         .device-controls {
             display: flex;
             gap: 10px;
+            min-width: 0;
         }
 
         .device-controls select {
             flex: 1;
+            min-width: 0;
+            max-width: 100%;
             padding: 10px;
             background: #0f0f0f;
             color: #e0e0e0;
             border: 1px solid #333;
             border-radius: 6px;
             font-size: 14px;
+            text-overflow: ellipsis;
+        }
+
+        .audio-card .device-controls select {
+            min-width: 420px;
         }
 
         .test-button {
@@ -502,6 +514,14 @@
                 grid-template-columns: 1fr;
             }
 
+            .audio-card {
+                min-width: 0;
+            }
+
+            .audio-card .device-controls select {
+                min-width: 0;
+            }
+
             .prompt-fields {
                 grid-template-columns: 1fr;
             }
@@ -518,7 +538,7 @@
         
         <div class="setup-cards">
             <!-- Audio Device Selection -->
-            <div class="setup-card">
+            <div class="setup-card audio-card">
                 <h2>Audio Devices</h2>
                 
                 <div class="device-row">
@@ -639,6 +659,7 @@
         let reconnectAttempts = 0;
         const maxReconnectAttempts = 5;
         let reconnectTimeout = null;
+        let playbackQueue = Promise.resolve();
 
         // Setup state
         let selectedMicDeviceId = null;
@@ -781,19 +802,30 @@
             const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
             
             console.log(`[Setup] Found ${audioInputs.length} microphones, ${audioOutputs.length} speakers`);
+
+            const formatDeviceLabel = (label, fallback) => {
+                const rawLabel = label || fallback;
+                const cleanedLabel = rawLabel
+                    .replace(/\s*\([^)]*(?:communications|default|bluetooth|usb|audio|driver|device|input|output)[^)]*\)\s*/gi, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                return cleanedLabel.length > 42 ? `${cleanedLabel.slice(0, 39)}...` : cleanedLabel;
+            };
             
             // Populate microphone dropdown
             micSelect.innerHTML = '';
             audioInputs.forEach((device, index) => {
                 const option = document.createElement('option');
                 option.value = device.deviceId;
-                option.textContent = device.label || `Microphone ${index + 1}`;
+                option.dataset.fullLabel = device.label || `Microphone ${index + 1}`;
+                option.textContent = formatDeviceLabel(device.label, `Microphone ${index + 1}`);
+                option.title = option.dataset.fullLabel;
                 micSelect.appendChild(option);
             });
             
             if (audioInputs.length > 0) {
                 selectedMicDeviceId = audioInputs[0].deviceId;
-                selectedMicLabel = micSelect.options[0].textContent;
+                selectedMicLabel = micSelect.options[0].dataset.fullLabel || micSelect.options[0].textContent;
                 testMicButton.disabled = false;
             }
             
@@ -802,7 +834,9 @@
             audioOutputs.forEach((device, index) => {
                 const option = document.createElement('option');
                 option.value = device.deviceId;
-                option.textContent = device.label || `Speaker ${index + 1}`;
+                option.dataset.fullLabel = device.label || `Speaker ${index + 1}`;
+                option.textContent = formatDeviceLabel(device.label, `Speaker ${index + 1}`);
+                option.title = option.dataset.fullLabel;
                 speakerSelect.appendChild(option);
             });
             
@@ -813,7 +847,7 @@
                 console.log('[Setup] setSinkId not supported');
             } else if (audioOutputs.length > 0) {
                 selectedSpeakerDeviceId = audioOutputs[0].deviceId;
-                selectedSpeakerLabel = speakerSelect.options[0].textContent;
+                selectedSpeakerLabel = speakerSelect.options[0].dataset.fullLabel || speakerSelect.options[0].textContent;
                 testSpeakerButton.disabled = false;
             }
         }
@@ -821,13 +855,13 @@
         function setupSetupEventListeners() {
             micSelect.addEventListener('change', () => {
                 selectedMicDeviceId = micSelect.value;
-                selectedMicLabel = micSelect.options[micSelect.selectedIndex].textContent;
+                selectedMicLabel = micSelect.options[micSelect.selectedIndex].dataset.fullLabel || micSelect.options[micSelect.selectedIndex].textContent;
                 console.log('[Setup] Mic changed:', selectedMicDeviceId);
             });
             
             speakerSelect.addEventListener('change', () => {
                 selectedSpeakerDeviceId = speakerSelect.value;
-                selectedSpeakerLabel = speakerSelect.options[speakerSelect.selectedIndex].textContent;
+                selectedSpeakerLabel = speakerSelect.options[speakerSelect.selectedIndex].dataset.fullLabel || speakerSelect.options[speakerSelect.selectedIndex].textContent;
                 console.log('[Setup] Speaker changed:', selectedSpeakerDeviceId);
             });
             
@@ -1174,10 +1208,23 @@
         // ============================================================================
         // WebSocket Connection
         // ============================================================================
+        function getWebSocketUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const configuredUrl = params.get('ws') || localStorage.getItem('backendWsUrl');
+
+            if (configuredUrl) {
+                return configuredUrl;
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            return `${protocol}//${window.location.host}/ws`;
+        }
+
         function connectWebSocket() {
-            console.log('[WebSocket] Connecting to ws://localhost:8000/ws...');
+            const webSocketUrl = getWebSocketUrl();
+            console.log(`[WebSocket] Connecting to ${webSocketUrl}...`);
             
-            ws = new WebSocket('ws://localhost:8000/ws');
+            ws = new WebSocket(webSocketUrl);
             ws.binaryType = 'arraybuffer';
 
             ws.onopen = () => {
@@ -1211,7 +1258,7 @@
                 } else {
                     // Binary message (TTS audio)
                     console.log(`[WebSocket] Received ${event.data.byteLength} bytes of audio`);
-                    await playAudio(event.data);
+                    queueAudioPlayback(event.data);
                 }
             };
 
@@ -1275,11 +1322,21 @@
         // ============================================================================
         // Audio Playback
         // ============================================================================
+        function queueAudioPlayback(arrayBuffer) {
+            playbackQueue = playbackQueue
+                .then(() => playAudio(arrayBuffer))
+                .catch((err) => {
+                    console.error('[Audio] Playback queue error:', err);
+                });
+        }
+
         async function playAudio(arrayBuffer) {
+            let url = null;
+
             try {
                 console.log('[Audio] Playing TTS audio through selected speaker...');
                 const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
-                const url = URL.createObjectURL(blob);
+                url = URL.createObjectURL(blob);
                 const audio = new Audio(url);
                 
                 // Set audio output device if supported
@@ -1288,15 +1345,20 @@
                     console.log('[Audio] Audio routed to selected speaker');
                 }
                 
-                await audio.play();
-                
-                audio.onended = () => {
-                    URL.revokeObjectURL(url);
-                    console.log('[Audio] TTS playback complete');
-                };
+                await new Promise((resolve, reject) => {
+                    audio.onended = resolve;
+                    audio.onerror = () => reject(new Error('TTS audio playback failed'));
+                    audio.play().catch(reject);
+                });
+
+                console.log('[Audio] TTS playback complete');
                 
             } catch (err) {
                 console.error('[Audio] Failed to play audio:', err);
+            } finally {
+                if (url) {
+                    URL.revokeObjectURL(url);
+                }
             }
         }
 

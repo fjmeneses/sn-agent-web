@@ -1,28 +1,26 @@
-output "azure_speech_key" {
-  description = "Azure Speech Services primary key"
-  value       = azurerm_cognitive_account.speech.primary_access_key
-  sensitive   = true
+output "azure_ai_services_resource_id" {
+  description = "Existing Azure AI Services resource ID used for Entra-authenticated Speech synthesis"
+  value       = data.azurerm_cognitive_account.ai_services.id
 }
 
 output "azure_speech_region" {
-  description = "Azure Speech Services region"
-  value       = azurerm_resource_group.main.location
+  description = "Existing Azure AI Services region used for Speech"
+  value       = data.azurerm_cognitive_account.ai_services.location
 }
 
-output "azure_openai_key" {
-  description = "Azure OpenAI primary key"
-  value       = azurerm_cognitive_account.openai.primary_access_key
-  sensitive   = true
+output "azure_speech_endpoint" {
+  description = "Existing Azure AI Services endpoint used for Speech"
+  value       = data.azurerm_cognitive_account.ai_services.endpoint
 }
 
 output "azure_openai_endpoint" {
-  description = "Azure OpenAI endpoint URL"
-  value       = azurerm_cognitive_account.openai.endpoint
+  description = "Existing Azure AI Services endpoint URL"
+  value       = data.azurerm_cognitive_account.ai_services.endpoint
 }
 
 output "azure_openai_deployment" {
-  description = "Azure OpenAI deployment name"
-  value       = azurerm_cognitive_deployment.model.name
+  description = "Existing Azure OpenAI deployment name"
+  value       = var.openai_deployment_name
 }
 
 output "acr_login_server" {
@@ -30,19 +28,13 @@ output "acr_login_server" {
   value       = azurerm_container_registry.acr.login_server
 }
 
-output "acr_admin_username" {
-  description = "ACR admin username"
-  value       = azurerm_container_registry.acr.admin_username
-  sensitive   = true
-}
-
-output "acr_admin_password" {
-  description = "ACR admin password"
-  value       = azurerm_container_registry.acr.admin_password
-  sensitive   = true
-}
-
 output "app_service_url" {
   description = "App Service default hostname"
   value       = "https://${azurerm_linux_web_app.app.default_hostname}"
 }
+
+output "resource_group_name" {
+  description = "Resource group containing the deployed App Service and ACR"
+  value       = azurerm_resource_group.main.name
+}
+

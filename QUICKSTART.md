@@ -112,14 +112,17 @@ azure-sn-agent-web/
 Required environment variables (automatically configured via `setup-env.sh`):
 
 ```bash
-AZURE_SPEECH_KEY=your-speech-key
-AZURE_SPEECH_REGION=southeastasia
-AZURE_OPENAI_KEY=your-openai-key
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_AI_SERVICES_RESOURCE_ID=/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.CognitiveServices/accounts/<ai-services-account>
+AZURE_SPEECH_ENDPOINT=https://your-resource.cognitiveservices.azure.com/
+AZURE_SPEECH_REGION=your-ai-services-region
+AZURE_OPENAI_ENDPOINT=https://your-resource.cognitiveservices.azure.com/
 AZURE_OPENAI_DEPLOYMENT=your-deployment-name
+AZURE_OPENAI_API_VERSION=2024-12-01-preview
 AZURE_TTS_VOICE=en-US-AndrewNeural
 UNATTENDED=false  # Set to "true" for auto-speak mode
 ```
+
+Azure AI Services authentication uses Microsoft Entra ID. In Azure App Service, the system-assigned managed identity needs `Cognitive Services User` and `Cognitive Services OpenAI User` on the Azure AI Services account. For local runs, sign in with Azure CLI or another credential supported by `DefaultAzureCredential`.
 
 ## Testing Locally
 

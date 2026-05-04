@@ -48,3 +48,11 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+
+# Local deployment tooling and Terraform state
+.tools/
+terraform/**/.terraform/
+terraform/**/*.tfstate
+terraform/**/*.tfstate.*
+terraform/**/tfplan
+terraform/**/.terraform.lock.hcl

@@ -72,14 +72,14 @@ echo "Extracting Terraform outputs..."
 echo ""
 
 # Extract outputs
-SPEECH_KEY=$(terraform output -raw azure_speech_key 2>/dev/null || echo "")
+AI_SERVICES_RESOURCE_ID=$(terraform output -raw azure_ai_services_resource_id 2>/dev/null || echo "")
+SPEECH_ENDPOINT=$(terraform output -raw azure_speech_endpoint 2>/dev/null || echo "")
 SPEECH_REGION=$(terraform output -raw azure_speech_region 2>/dev/null || echo "")
-OPENAI_KEY=$(terraform output -raw azure_openai_key 2>/dev/null || echo "")
 OPENAI_ENDPOINT=$(terraform output -raw azure_openai_endpoint 2>/dev/null || echo "")
 OPENAI_DEPLOYMENT=$(terraform output -raw azure_openai_deployment 2>/dev/null || echo "")
 
 # Validate core outputs
-if [[ -z "$SPEECH_KEY" || -z "$OPENAI_KEY" ]]; then
+if [[ -z "$AI_SERVICES_RESOURCE_ID" || -z "$SPEECH_ENDPOINT" || -z "$OPENAI_ENDPOINT" ]]; then
     echo "Error: Failed to retrieve Terraform outputs. Please check your Terraform state."
     exit 1
 fi
@@ -97,17 +97,18 @@ cat > "$ENV_FILE" << EOF
 # Generated on: $(date)
 
 # ==============================================================================
-# Azure Speech Services Configuration
+# Azure AI Services / Speech Configuration
 # ==============================================================================
-AZURE_SPEECH_KEY=$SPEECH_KEY
+AZURE_AI_SERVICES_RESOURCE_ID=$AI_SERVICES_RESOURCE_ID
+AZURE_SPEECH_ENDPOINT=$SPEECH_ENDPOINT
 AZURE_SPEECH_REGION=$SPEECH_REGION
 
 # ==============================================================================
 # Azure OpenAI Configuration
 # ==============================================================================
-AZURE_OPENAI_KEY=$OPENAI_KEY
 AZURE_OPENAI_ENDPOINT=$OPENAI_ENDPOINT
 AZURE_OPENAI_DEPLOYMENT=$OPENAI_DEPLOYMENT
+AZURE_OPENAI_API_VERSION=2024-12-01-preview
 
 # ==============================================================================
 # Azure Text-to-Speech Configuration
@@ -133,12 +134,10 @@ if [ "$MODE" == "full" ]; then
     cd "$TERRAFORM_DIR"
     
     ACR_SERVER=$(terraform output -raw acr_login_server 2>/dev/null || echo "")
-    ACR_USERNAME=$(terraform output -raw acr_admin_username 2>/dev/null || echo "")
     APP_URL=$(terraform output -raw app_service_url 2>/dev/null || echo "")
     
     if [[ -n "$ACR_SERVER" ]]; then
         echo "ACR Login Server : $ACR_SERVER"
-        echo "ACR Username     : $ACR_USERNAME"
         echo "App Service URL  : $APP_URL"
         echo ""
         echo "Next steps — Push your Docker image to ACR:"

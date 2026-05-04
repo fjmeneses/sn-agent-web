@@ -15,9 +15,10 @@ import wave
 import io
 
 import azure.cognitiveservices.speech as speechsdk
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from openai import AzureOpenAI
 import uvicorn
 
@@ -31,20 +32,26 @@ AZURE_SAMPLE_RATE = 16000  # Browser sends 16kHz PCM
 CHANNELS = 1  # Mono
 BITS_PER_SAMPLE = 16
 
-# Azure Speech Configuration
-AZURE_SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY")
+# Azure AI Services / Speech Configuration
 AZURE_SPEECH_REGION = os.getenv("AZURE_SPEECH_REGION", "southeastasia")
+AZURE_SPEECH_ENDPOINT = os.getenv("AZURE_SPEECH_ENDPOINT")
+AZURE_AI_SERVICES_RESOURCE_ID = os.getenv("AZURE_AI_SERVICES_RESOURCE_ID")
 
 # Azure OpenAI Configuration
-AZURE_OPENAI_KEY = os.getenv("AZURE_OPENAI_KEY")
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
 
 # Azure TTS Configuration
 AZURE_TTS_VOICE = os.getenv("AZURE_TTS_VOICE", "en-US-AndrewNeural")
 
 # Mode configuration
 UNATTENDED_MODE = os.getenv("UNATTENDED", "false").lower() == "true"
+
+# In Azure App Service this resolves to the system-assigned managed identity.
+# Locally, DefaultAzureCredential can use Azure CLI or developer-tool sign-in.
+AZURE_CREDENTIAL = DefaultAzureCredential()
+AZURE_TOKEN_SCOPE = "https://cognitiveservices.azure.com/.default"
 
 # System prompt for the LLM
 SYSTEM_PROMPT = """You are talking to Darcy a Senior Decision Maker for an Airline Company. 
@@ -84,6 +91,12 @@ class AgentState(Enum):
 # ============================================================================
 app = FastAPI(title="SecondNatureAgent Agent Backend")
 
+
+@app.get("/")
+async def frontend():
+    """Serve the browser client from the same Azure App Service as the API."""
+    return FileResponse("index.html")
+
 # Global session state (single session at a time)
 active_websocket: Optional[WebSocket] = None
 active_session_lock = threading.Lock()
@@ -109,11 +122,12 @@ class VoiceAgentSession:
         
         # OpenAI client
         self.openai_client: Optional[AzureOpenAI] = None
-        if AZURE_OPENAI_KEY and AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT:
+        if AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT:
+            token_provider = get_bearer_token_provider(AZURE_CREDENTIAL, AZURE_TOKEN_SCOPE)
             self.openai_client = AzureOpenAI(
-                api_key=AZURE_OPENAI_KEY,
-                api_version="2024-12-01-preview",
-                azure_endpoint=AZURE_OPENAI_ENDPOINT
+                api_version=AZURE_OPENAI_API_VERSION,
+                azure_endpoint=AZURE_OPENAI_ENDPOINT,
+                azure_ad_token_provider=token_provider
             )
         
         # Conversation history
@@ -128,6 +142,9 @@ class VoiceAgentSession:
         # Pending state
         self.pending_response: Optional[str] = None
         self.pending_transcripts = asyncio.Queue()
+        self.tts_playback_lock = threading.Lock()
+        self.tts_pending_lock = threading.Lock()
+        self.tts_pending_count = 0
         
         # Running flag
         self.running = True
@@ -165,6 +182,9 @@ class VoiceAgentSession:
     
     def setup_azure_speech(self):
         """Set up Azure Speech recognizer with PushAudioInputStream."""
+        if not AZURE_SPEECH_ENDPOINT:
+            raise RuntimeError("AZURE_SPEECH_ENDPOINT is required for Entra-authenticated Speech SDK access")
+
         # Create push audio stream
         self.push_stream = speechsdk.audio.PushAudioInputStream()
         
@@ -173,8 +193,8 @@ class VoiceAgentSession:
         
         # Create speech configuration
         speech_config = speechsdk.SpeechConfig(
-            subscription=AZURE_SPEECH_KEY,
-            region=AZURE_SPEECH_REGION
+            token_credential=AZURE_CREDENTIAL,
+            endpoint=AZURE_SPEECH_ENDPOINT
         )
         speech_config.speech_recognition_language = "en-US"
         
@@ -316,7 +336,7 @@ class VoiceAgentSession:
             # Check mode
             if self.unattended_mode:
                 print(f"{COLOR_INFO}[Unattended Mode] Auto-speaking...{COLOR_RESET}")
-                self._speak_response(assistant_message)
+                self.queue_speech(assistant_message)
                 self.pending_response = None
             else:
                 # Wait for client confirmation
@@ -327,6 +347,23 @@ class VoiceAgentSession:
             import traceback
             traceback.print_exc()
             self.set_state(AgentState.LISTENING)
+
+    def queue_speech(self, text: str):
+        """Queue a response for serialized TTS playback."""
+        if not text:
+            return
+
+        with self.tts_pending_lock:
+            self.tts_pending_count += 1
+            queue_position = self.tts_pending_count
+
+        print(f"{COLOR_INFO}[TTS] Queued response for playback (position: {queue_position}){COLOR_RESET}")
+        self.set_state(AgentState.SPEAKING)
+        threading.Thread(
+            target=self._speak_response,
+            args=(text,),
+            daemon=True
+        ).start()
     
     def _speak_response(self, text: str):
         """Use Azure TTS to synthesize speech (runs in thread)."""
@@ -334,54 +371,60 @@ class VoiceAgentSession:
             return
         
         try:
-            self.set_state(AgentState.SPEAKING)
-            print(f"{COLOR_INFO}[TTS] Synthesizing speech...{COLOR_RESET}")
-            print(f"{COLOR_INFO}[TTS] Text length: {len(text)} chars{COLOR_RESET}")
-            
-            # Create speech config
-            print(f"{COLOR_INFO}[TTS] Creating speech config...{COLOR_RESET}")
-            speech_config = speechsdk.SpeechConfig(
-                subscription=AZURE_SPEECH_KEY,
-                region=AZURE_SPEECH_REGION
-            )
-            speech_config.speech_synthesis_voice_name = AZURE_TTS_VOICE
-            print(f"{COLOR_INFO}[TTS] Speech config created{COLOR_RESET}")
-            
-            # Use None for audio_config to get raw audio data without automatic playback
-            print(f"{COLOR_INFO}[TTS] Creating synthesizer...{COLOR_RESET}")
-            synthesizer = speechsdk.SpeechSynthesizer(
-                speech_config=speech_config,
-                audio_config=None
-            )
-            print(f"{COLOR_INFO}[TTS] Synthesizer created{COLOR_RESET}")
-            
-            # Synthesize with timeout
-            print(f"{COLOR_INFO}[TTS] Calling Azure TTS API...{COLOR_RESET}")
-            future = synthesizer.speak_text_async(text)
-            result = future.get()
-            print(f"{COLOR_INFO}[TTS] API call completed, reason: {result.reason}{COLOR_RESET}")
-            
-            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-                # Get audio data directly from result (already in WAV format)
-                audio_data = bytes(result.audio_data)
+            with self.tts_playback_lock:
+                self.set_state(AgentState.SPEAKING)
+                print(f"{COLOR_INFO}[TTS] Synthesizing speech...{COLOR_RESET}")
+                print(f"{COLOR_INFO}[TTS] Text length: {len(text)} chars{COLOR_RESET}")
                 
-                print(f"{COLOR_INFO}[TTS] Synthesized {len(audio_data)} bytes{COLOR_RESET}")
+                # Create speech config
+                print(f"{COLOR_INFO}[TTS] Creating speech config...{COLOR_RESET}")
+                if not AZURE_AI_SERVICES_RESOURCE_ID:
+                    raise RuntimeError("AZURE_AI_SERVICES_RESOURCE_ID is required for Entra-authenticated Speech synthesis")
+
+                aad_token = AZURE_CREDENTIAL.get_token(AZURE_TOKEN_SCOPE).token
+                speech_authorization_token = f"aad#{AZURE_AI_SERVICES_RESOURCE_ID}#{aad_token}"
+                speech_config = speechsdk.SpeechConfig(
+                    auth_token=speech_authorization_token,
+                    region=AZURE_SPEECH_REGION
+                )
+                speech_config.speech_synthesis_voice_name = AZURE_TTS_VOICE
+                print(f"{COLOR_INFO}[TTS] Speech config created{COLOR_RESET}")
                 
-                # Send audio to client (already in WAV format, no need to wrap)
-                try:
-                    asyncio.run_coroutine_threadsafe(
-                        self.send_binary(audio_data),
-                        self.loop
-                    ).result(timeout=5.0)  # Wait up to 5 seconds
-                    print(f"{COLOR_INFO}[TTS] Audio sent to client{COLOR_RESET}")
-                except Exception as e:
-                    print(f"{COLOR_ERROR}[TTS] Failed to send audio: {e}{COLOR_RESET}")
+                # Use None for audio_config to get raw audio data without automatic playback
+                print(f"{COLOR_INFO}[TTS] Creating synthesizer...{COLOR_RESET}")
+                synthesizer = speechsdk.SpeechSynthesizer(
+                    speech_config=speech_config,
+                    audio_config=None
+                )
+                print(f"{COLOR_INFO}[TTS] Synthesizer created{COLOR_RESET}")
                 
-            elif result.reason == speechsdk.ResultReason.Canceled:
-                cancellation = result.cancellation_details
-                print(f"{COLOR_ERROR}[TTS Error] Canceled: {cancellation.reason}{COLOR_RESET}")
-                if cancellation.error_details:
-                    print(f"{COLOR_ERROR}[TTS Error] Details: {cancellation.error_details}{COLOR_RESET}")
+                # Synthesize with timeout
+                print(f"{COLOR_INFO}[TTS] Calling Azure TTS API...{COLOR_RESET}")
+                future = synthesizer.speak_text_async(text)
+                result = future.get()
+                print(f"{COLOR_INFO}[TTS] API call completed, reason: {result.reason}{COLOR_RESET}")
+                
+                if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+                    # Get audio data directly from result (already in WAV format)
+                    audio_data = bytes(result.audio_data)
+                    
+                    print(f"{COLOR_INFO}[TTS] Synthesized {len(audio_data)} bytes{COLOR_RESET}")
+                    
+                    # Send audio to client (already in WAV format, no need to wrap)
+                    try:
+                        asyncio.run_coroutine_threadsafe(
+                            self.send_binary(audio_data),
+                            self.loop
+                        ).result(timeout=5.0)  # Wait up to 5 seconds
+                        print(f"{COLOR_INFO}[TTS] Audio sent to client{COLOR_RESET}")
+                    except Exception as e:
+                        print(f"{COLOR_ERROR}[TTS] Failed to send audio: {e}{COLOR_RESET}")
+                    
+                elif result.reason == speechsdk.ResultReason.Canceled:
+                    cancellation = result.cancellation_details
+                    print(f"{COLOR_ERROR}[TTS Error] Canceled: {cancellation.reason}{COLOR_RESET}")
+                    if cancellation.error_details:
+                        print(f"{COLOR_ERROR}[TTS Error] Details: {cancellation.error_details}{COLOR_RESET}")
         
         except Exception as e:
             print(f"{COLOR_ERROR}[TTS Error] {type(e).__name__}: {str(e)}{COLOR_RESET}")
@@ -389,13 +432,19 @@ class VoiceAgentSession:
             traceback.print_exc()
         
         finally:
-            # Return to listening
-            self.set_state(AgentState.LISTENING)
-            # Process queued transcripts
-            asyncio.run_coroutine_threadsafe(
-                self._process_queued_transcripts(),
-                self.loop
-            )
+            with self.tts_pending_lock:
+                self.tts_pending_count = max(0, self.tts_pending_count - 1)
+                has_more_speech = self.tts_pending_count > 0
+
+            if has_more_speech:
+                print(f"{COLOR_INFO}[TTS] Waiting for next queued response{COLOR_RESET}")
+                self.set_state(AgentState.SPEAKING)
+            else:
+                self.set_state(AgentState.LISTENING)
+                asyncio.run_coroutine_threadsafe(
+                    self._process_queued_transcripts(),
+                    self.loop
+                )
     
     def _create_wav(self, pcm_data: bytes) -> bytes:
         """Wrap PCM data in WAV header (16kHz, 16-bit, mono)."""
@@ -439,11 +488,7 @@ class VoiceAgentSession:
                 # Client confirmed - speak the pending response
                 if self.pending_response and self.get_state() == AgentState.READY:
                     print(f"{COLOR_INFO}[Client] Speak confirmed{COLOR_RESET}")
-                    threading.Thread(
-                        target=self._speak_response,
-                        args=(self.pending_response,),
-                        daemon=True
-                    ).start()
+                    self.queue_speech(self.pending_response)
                     self.pending_response = None
             
             elif event == "set_system_prompt":
@@ -549,8 +594,9 @@ async def health_check():
     return JSONResponse(content={
         "status": "ok",
         "mode": "unattended" if UNATTENDED_MODE else "interactive",
-        "azure_speech": "configured" if AZURE_SPEECH_KEY else "missing",
-        "azure_openai": "configured" if AZURE_OPENAI_KEY else "missing"
+        "azure_speech": "configured" if AZURE_SPEECH_ENDPOINT and AZURE_AI_SERVICES_RESOURCE_ID else "missing",
+        "azure_openai": "configured" if AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT else "missing",
+        "auth": "entra_id"
     })
 
 
@@ -562,8 +608,9 @@ if __name__ == "__main__":
     print(f"{COLOR_INFO}SecondNatureAgent Agent Backend Server{COLOR_RESET}")
     print(f"{COLOR_INFO}{'='*80}{COLOR_RESET}")
     print(f"{COLOR_INFO}Mode: {'UNATTENDED' if UNATTENDED_MODE else 'INTERACTIVE'}{COLOR_RESET}")
-    print(f"{COLOR_INFO}Azure Speech: {'OK' if AZURE_SPEECH_KEY else 'MISSING'}{COLOR_RESET}")
-    print(f"{COLOR_INFO}Azure OpenAI: {'OK' if AZURE_OPENAI_KEY else 'MISSING'}{COLOR_RESET}")
+    print(f"{COLOR_INFO}Azure Speech: {'OK' if AZURE_SPEECH_ENDPOINT and AZURE_AI_SERVICES_RESOURCE_ID else 'MISSING'}{COLOR_RESET}")
+    print(f"{COLOR_INFO}Azure OpenAI: {'OK' if AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT else 'MISSING'}{COLOR_RESET}")
+    print(f"{COLOR_INFO}Authentication: Microsoft Entra ID{COLOR_RESET}")
     print(f"{COLOR_INFO}{'='*80}{COLOR_RESET}\n")
     
     uvicorn.run(app, host="0.0.0.0", port=8000)

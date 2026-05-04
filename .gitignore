@@ -105,6 +105,7 @@ terraform/full/*.tfstate.*
 terraform/full/*.tfstate.backup
 terraform/full/.terraform.lock.hcl
 terraform/full/terraform.tfvars
+terraform/full/tfplan
 terraform/full/*.tfplan
 terraform/full/*.tfplan.json
 terraform/full/crash.log
@@ -145,6 +146,7 @@ temp/
 tmp/
 cache/
 .cache/
+.tools/
 
 # Jupyter Notebook
 .ipynb_checkpoints
